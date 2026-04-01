@@ -11,14 +11,17 @@ Let Claude read your emails, discuss replies with you, draft responses, and save
 ```bash
 git clone https://github.com/YuWenHao1212/bp1-email.git
 cd bp1-email
-bash install.sh
 ```
 
-This copies the email skill to `~/.claude/skills/email/` (global — works in any directory).
+Open Claude Code in this directory and say:
+
+> "安裝 email skill"
+
+Claude will install the skill to `~/.claude/skills/email/` (global — works in any directory).
 
 ## Setup
 
-After installing, open Claude Code (or Cowork) and say:
+After installing, open Claude Code in any directory and say:
 
 > "幫我設定 email"
 
