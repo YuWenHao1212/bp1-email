@@ -49,6 +49,7 @@ Just talk to Claude:
 | Refine | Adjust tone, add details, iterate |
 | Reply with threading | Keeps the conversation thread intact |
 | Attachments | Attach local files (PDF, Excel, etc.) |
+| HTML theme | `--html --theme` wraps email in mobile-safe template |
 | Batch templates | Same template × multiple recipients |
 | Search | Find emails by subject or sender (supports CJK) |
 | Gmail + Outlook | Standard IMAP, works with both |

@@ -100,10 +100,21 @@ account: {帳號名稱}
 | `check {account} [limit]` | 列出未讀信件 |
 | `read {account} <id>` | 讀一封信的完整內容 |
 | `search {account} <query> [limit]` | 搜尋信件（支援中文） |
-| `draft {account} <to> <subject> <body> [cc] [--html] [--attach file]` | 產草稿 |
-| `reply {account} <id> <body> [--all] [--html] [--attach file]` | 回覆 |
+| `draft {account} <to> <subject> <body> [cc] [--html] [--theme] [--attach file]` | 產草稿 |
+| `reply {account} <id> <body> [--all] [--html] [--theme] [--attach file]` | 回覆 |
 | `mark_read {account} <id> [id...]` | 標記已讀 |
 | `list_folders {account}` | 列出所有信箱資料夾 |
+
+## HTML 信件規則
+
+產 HTML body 時**必須遵守**：
+
+- **不要用 `<blockquote>`** — iOS Mail 會渲染成帶色條的縮排引用區塊，手機看起來格式錯亂
+- **不要用 `<h1>`~`<h6>`** — 各 mail client 渲染差異大，用 `<strong>` 或 `<p style="font-size:18px;font-weight:bold;">` 代替
+- **所有樣式用 inline style** — mail client 不吃 `<style>` block 或 class
+- **保持扁平結構** — 不要巢狀 `<div>`，用 `<p>` + `<br>` 控制排版
+- **加 `--theme`** 會自動套用 email-safe 的 table layout 模板，建議 HTML 信件都加
+- 程式會自動把 `<blockquote>` 替換成 `<div>`（防呆），但產 body 時就不要用
 
 ## 安全規則
 

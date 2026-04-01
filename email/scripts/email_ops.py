@@ -9,6 +9,7 @@ All operations use standard IMAP protocol.
 
 import imaplib
 import email
+import re
 import sys
 import os
 import json
@@ -24,6 +25,7 @@ from email.utils import formatdate, parseaddr, getaddresses
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_FILE = os.environ.get("EMAIL_ENV_FILE", os.path.join(SCRIPT_DIR, ".env.email"))
+TEMPLATE_DIR = os.path.join(os.path.dirname(SCRIPT_DIR), "templates")
 
 # Provider presets
 PROVIDERS = {
@@ -201,6 +203,41 @@ def parse_attach_args(argv):
   return clean, files
 
 
+def sanitize_html(html_body):
+  """Replace email-unsafe HTML tags to prevent mobile rendering issues.
+  iOS Mail renders <blockquote> as indented blocks with colored bars."""
+  html_body = re.sub(
+    r'<blockquote[^>]*>',
+    '<div style="margin:0;padding:0;">',
+    html_body,
+    flags=re.IGNORECASE,
+  )
+  html_body = re.sub(
+    r'</blockquote>',
+    '</div>',
+    html_body,
+    flags=re.IGNORECASE,
+  )
+  return html_body
+
+
+def load_theme():
+  """Load HTML email theme template."""
+  theme_path = os.path.join(TEMPLATE_DIR, "default.html")
+  if os.path.exists(theme_path):
+    with open(theme_path) as f:
+      return f.read()
+  return None
+
+
+def apply_theme(body_html):
+  """Wrap body HTML in theme template. Returns full HTML."""
+  template = load_theme()
+  if template and "{{BODY}}" in template:
+    return template.replace("{{BODY}}", body_html)
+  return body_html
+
+
 # --- Commands ---
 
 def cmd_status(accounts=None):
@@ -322,18 +359,25 @@ def cmd_list_folders(account_name):
   print(json.dumps({"account": account_name, "folders": results}, indent=2, ensure_ascii=False))
 
 
-def cmd_draft(account_name, to_addr, subject, body, cc=None, html=False, attachments=None):
+def cmd_draft(account_name, to_addr, subject, body, cc=None, html=False, theme=False, attachments=None):
   """Create a draft email in the Drafts folder."""
   m, drafts_folder, user = connect(account_name)
   drafts_folder = detect_drafts_folder(m, drafts_folder)
 
-  has_attachments = attachments and len(attachments) > 0
+  if html:
+    body = sanitize_html(body)
+    if theme:
+      body = apply_theme(body)
 
-  if has_attachments:
+  has_attachments = attachments and len(attachments) > 0
+  needs_multipart = has_attachments or (html and theme)
+
+  if needs_multipart:
     msg = MIMEMultipart("mixed")
     content_type = "html" if html else "plain"
     msg.attach(MIMEText(body, content_type, "utf-8"))
-    attach_files(msg, attachments)
+    if has_attachments:
+      attach_files(msg, attachments)
   else:
     content_type = "html" if html else "plain"
     msg = MIMEText(body, content_type, "utf-8")
@@ -353,7 +397,7 @@ def cmd_draft(account_name, to_addr, subject, body, cc=None, html=False, attachm
   print(json.dumps(output))
 
 
-def cmd_reply(account_name, msg_id, body, reply_all=False, html=False, attachments=None, mailbox="INBOX"):
+def cmd_reply(account_name, msg_id, body, reply_all=False, html=False, theme=False, attachments=None, mailbox="INBOX"):
   """Create a reply draft with proper threading headers."""
   m, drafts_folder, user = connect(account_name)
   drafts_folder = detect_drafts_folder(m, drafts_folder)
@@ -392,13 +436,21 @@ def cmd_reply(account_name, msg_id, body, reply_all=False, html=False, attachmen
     cc_addrs = ", ".join(filtered) if filtered else ""
 
   references = f"{orig_refs} {orig_msg_id}".strip() if orig_refs else orig_msg_id
-  has_attachments = attachments and len(attachments) > 0
 
-  if has_attachments:
+  if html:
+    body = sanitize_html(body)
+    if theme:
+      body = apply_theme(body)
+
+  has_attachments = attachments and len(attachments) > 0
+  needs_multipart = has_attachments or (html and theme)
+
+  if needs_multipart:
     msg = MIMEMultipart()
     content_type = "html" if html else "plain"
     msg.attach(MIMEText(body, content_type, "utf-8"))
-    attach_files(msg, attachments)
+    if has_attachments:
+      attach_files(msg, attachments)
   else:
     content_type = "html" if html else "plain"
     msg = MIMEText(body, content_type, "utf-8")
@@ -515,25 +567,27 @@ if __name__ == "__main__":
 
   elif cmd == "draft":
     is_html = "--html" in sys.argv
-    raw_args = [a for a in sys.argv[2:] if a != "--html"]
+    is_theme = "--theme" in sys.argv
+    raw_args = [a for a in sys.argv[2:] if a not in ("--html", "--theme")]
     clean_args, attach_list = parse_attach_args(raw_args)
     account = clean_args[0]
     to_addr = clean_args[1]
     subject = clean_args[2]
     body = clean_args[3]
     cc = clean_args[4] if len(clean_args) > 4 else None
-    cmd_draft(account, to_addr, subject, body, cc, html=is_html,
+    cmd_draft(account, to_addr, subject, body, cc, html=is_html, theme=is_theme,
               attachments=attach_list if attach_list else None)
 
   elif cmd == "reply":
     is_all = "--all" in sys.argv
     is_html = "--html" in sys.argv
-    raw_args = [a for a in sys.argv[2:] if a not in ("--all", "--html")]
+    is_theme = "--theme" in sys.argv
+    raw_args = [a for a in sys.argv[2:] if a not in ("--all", "--html", "--theme")]
     clean_args, attach_list = parse_attach_args(raw_args)
     account = clean_args[0]
     msg_id = clean_args[1]
     body = clean_args[2]
-    cmd_reply(account, msg_id, body, reply_all=is_all, html=is_html,
+    cmd_reply(account, msg_id, body, reply_all=is_all, html=is_html, theme=is_theme,
               attachments=attach_list if attach_list else None)
 
   elif cmd == "mark_read":
