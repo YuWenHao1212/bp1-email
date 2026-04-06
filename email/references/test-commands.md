@@ -53,9 +53,17 @@ python3 email_ops.py check work 5
 
 會列出最近 5 封未讀信件的寄件人、主旨、日期。
 
-## Step 4：讀一封信
+## Step 4：列出最近的信
 
-從上一步的結果中選一封，用它的 id：
+```bash
+python3 email_ops.py recent work 3
+```
+
+會列出最近 3 封信件（不分已讀未讀），最新的排最前面。
+
+## Step 5：讀一封信
+
+�� Step 3 或 Step 4 的結果中選一封，用它的 id：
 
 ```bash
 python3 email_ops.py read work <id>
@@ -63,7 +71,7 @@ python3 email_ops.py read work <id>
 
 會顯示完整信件內容。如果信件有附件，會列出附件檔名。
 
-## Step 5：搜尋信件
+## Step 6：搜尋信件
 
 ```bash
 python3 email_ops.py search work "報價" 5
@@ -71,7 +79,7 @@ python3 email_ops.py search work "報價" 5
 
 支援中文搜尋。會按主旨和寄件人搜尋。
 
-## Step 6：產一封測試草稿
+## Step 7：產一封測試草稿
 
 ```bash
 python3 email_ops.py draft work "你自己的email" "測試信件" "這是一封測試草稿，可以刪除。"
@@ -81,7 +89,7 @@ python3 email_ops.py draft work "你自己的email" "測試信件" "這是一封
 
 去 Gmail / Outlook 的草稿匣確認有沒有出現。
 
-## Step 7：帶附件的草稿
+## Step 8：帶附件的草稿
 
 準備一個小檔案（例如桌面上的任何 PDF），然後：
 
@@ -93,7 +101,7 @@ python3 email_ops.py draft work "你自己的email" "附件測試" "請見附件
 
 ## 測試完成後
 
-1. 去 Gmail / Outlook 草稿匣，手動刪除 Step 6 和 Step 7 產生的測試草稿
+1. 去 Gmail / Outlook 草稿匣，手動刪除 Step 7 和 Step 8 產生的測試草稿
 2. 所有 Step 都通過 = 設定完成，可以開始使用
 
 ## 常見錯誤

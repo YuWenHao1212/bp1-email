@@ -7,6 +7,7 @@ Supported providers: Gmail, Google Workspace, Outlook, Microsoft 365.
 All operations use standard IMAP protocol.
 """
 
+import argparse
 import imaplib
 import email
 import re
@@ -227,21 +228,6 @@ def attach_files(msg, file_paths):
     msg.attach(part)
 
 
-def parse_attach_args(argv):
-  """Parse --attach flags from argv. Returns (clean_argv, file_list)."""
-  files = []
-  clean = []
-  i = 0
-  while i < len(argv):
-    if argv[i] == "--attach" and i + 1 < len(argv):
-      i += 1
-      files.append(argv[i])
-    else:
-      clean.append(argv[i])
-    i += 1
-  return clean, files
-
-
 def sanitize_html(html_body):
   """Replace email-unsafe HTML tags to prevent mobile rendering issues.
   iOS Mail renders <blockquote> as indented blocks with colored bars."""
@@ -258,6 +244,20 @@ def sanitize_html(html_body):
     flags=re.IGNORECASE,
   )
   return html_body
+
+
+def strip_html_tags(html):
+  """Convert HTML to readable plain text. No external dependencies."""
+  text = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
+  text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL | re.IGNORECASE)
+  text = re.sub(r'<br\s*/?\s*>', '\n', text, flags=re.IGNORECASE)
+  text = re.sub(r'</(p|div|tr|li|h[1-6])>', '\n', text, flags=re.IGNORECASE)
+  text = re.sub(r'<[^>]+>', '', text)
+  text = text.replace('&nbsp;', ' ').replace('&amp;', '&')
+  text = text.replace('&lt;', '<').replace('&gt;', '>')
+  text = text.replace('&quot;', '"').replace('&#39;', "'")
+  text = re.sub(r'\n{3,}', '\n\n', text)
+  return text.strip()
 
 
 def load_theme():
@@ -329,6 +329,32 @@ def cmd_check(account_name, limit=10, mailbox="INBOX"):
       pass
 
 
+def cmd_recent(account_name, limit=3, mailbox="INBOX"):
+  """List the most recent N emails (read or unread). JSON output."""
+  m, _, _ = connect(account_name)
+  try:
+    m.select(mailbox, readonly=True)
+    _, data = m.search(None, "ALL")
+    ids = data[0].split() if data[0] else []
+    results = []
+    for uid in reversed(ids[-limit:]):
+      _, msg_data = m.fetch(uid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])")
+      if msg_data and isinstance(msg_data[0], tuple):
+        header = email.message_from_bytes(msg_data[0][1])
+        results.append({
+          "id": uid.decode(),
+          "from": decode_addr(header.get("From", "")),
+          "subject": decode_subject(header.get("Subject")),
+          "date": header.get("Date", ""),
+        })
+    print(json.dumps(results, indent=2, ensure_ascii=False))
+  finally:
+    try:
+      m.logout()
+    except Exception:
+      pass
+
+
 def cmd_read(account_name, msg_id, mailbox="INBOX"):
   """Read full email content. JSON output."""
   m, _, _ = connect(account_name)
@@ -369,9 +395,9 @@ def cmd_read(account_name, msg_id, mailbox="INBOX"):
         charset = msg.get_content_charset() or "utf-8"
         body = payload.decode(charset, errors="replace")
 
-    # Use HTML body if no plain text available
+    # Use HTML body if no plain text available (strip tags for readability)
     if not body and html_body:
-      body = html_body
+      body = strip_html_tags(html_body)
 
     result = {
       "id": msg_id,
@@ -621,90 +647,182 @@ def cmd_search(account_name, query, limit=10, mailbox="INBOX"):
 
 # --- CLI ---
 
-def safe_int(value, default):
-  """Parse int from string, return default on failure."""
-  try:
-    return int(value)
-  except (ValueError, TypeError):
-    return default
+
+class JsonErrorParser(argparse.ArgumentParser):
+  """ArgumentParser that outputs errors as JSON instead of plain text."""
+
+  def error(self, message):
+    print(json.dumps({"error": message, "usage": self.format_usage().strip()}))
+    sys.exit(1)
 
 
-def cli_error(msg):
-  """Print JSON error and exit."""
-  print(json.dumps({"error": msg}))
-  sys.exit(1)
+def resolve(*values):
+  """Return the first non-None value, or None if all are None."""
+  for v in values:
+    if v is not None:
+      return v
+  return None
+
+
+def build_parser():
+  """Build the argparse parser with all subcommands."""
+  parser = JsonErrorParser(
+    prog="email_ops.py",
+    description="Email operations for Claude Code",
+  )
+  sub = parser.add_subparsers(dest="command")
+
+  # --- status ---
+  p = sub.add_parser("status", help="Check unread counts")
+  p.add_argument("accounts", nargs="*", default=None, help="Account names (default: all)")
+
+  # --- check ---
+  p = sub.add_parser("check", help="List unread emails")
+  p.add_argument("account_pos", nargs="?", default=None)
+  p.add_argument("limit_pos", nargs="?", default=None, type=int)
+  p.add_argument("--account", dest="account_flag", default=None)
+  p.add_argument("--limit", dest="limit_flag", default=None, type=int)
+
+  # --- recent ---
+  p = sub.add_parser("recent", help="List most recent N emails (read+unread)")
+  p.add_argument("account_pos", nargs="?", default=None)
+  p.add_argument("limit_pos", nargs="?", default=None, type=int)
+  p.add_argument("--account", dest="account_flag", default=None)
+  p.add_argument("--limit", dest="limit_flag", default=None, type=int)
+
+  # --- read ---
+  p = sub.add_parser("read", help="Read full email content")
+  p.add_argument("account_pos", nargs="?", default=None)
+  p.add_argument("msg_id_pos", nargs="?", default=None)
+  p.add_argument("--account", dest="account_flag", default=None)
+  p.add_argument("--id", dest="id_flag", default=None)
+
+  # --- draft ---
+  p = sub.add_parser("draft", help="Create email draft")
+  p.add_argument("account_pos", nargs="?", default=None)
+  p.add_argument("to_pos", nargs="?", default=None)
+  p.add_argument("subject_pos", nargs="?", default=None)
+  p.add_argument("body_pos", nargs="?", default=None)
+  p.add_argument("cc_pos", nargs="?", default=None)
+  p.add_argument("--account", dest="account_flag", default=None)
+  p.add_argument("--to", dest="to_flag", default=None)
+  p.add_argument("--subject", dest="subject_flag", default=None)
+  p.add_argument("--body", dest="body_flag", default=None)
+  p.add_argument("--cc", dest="cc_flag", default=None)
+  p.add_argument("--html", action="store_true")
+  p.add_argument("--theme", action="store_true")
+  p.add_argument("--attach", action="append", default=None, metavar="FILE")
+
+  # --- reply ---
+  p = sub.add_parser("reply", help="Reply to an email")
+  p.add_argument("account_pos", nargs="?", default=None)
+  p.add_argument("msg_id_pos", nargs="?", default=None)
+  p.add_argument("body_pos", nargs="?", default=None)
+  p.add_argument("--account", dest="account_flag", default=None)
+  p.add_argument("--id", dest="id_flag", default=None)
+  p.add_argument("--body", dest="body_flag", default=None)
+  p.add_argument("--all", dest="reply_all", action="store_true")
+  p.add_argument("--html", action="store_true")
+  p.add_argument("--theme", action="store_true")
+  p.add_argument("--attach", action="append", default=None, metavar="FILE")
+
+  # --- mark_read ---
+  p = sub.add_parser("mark_read", help="Mark messages as read")
+  p.add_argument("account_pos", nargs="?", default=None)
+  p.add_argument("msg_ids", nargs="*", default=None)
+  p.add_argument("--account", dest="account_flag", default=None)
+
+  # --- search ---
+  p = sub.add_parser("search", help="Search emails by subject or sender")
+  p.add_argument("account_pos", nargs="?", default=None)
+  p.add_argument("query_pos", nargs="?", default=None)
+  p.add_argument("limit_pos", nargs="?", default=None, type=int)
+  p.add_argument("--account", dest="account_flag", default=None)
+  p.add_argument("--query", dest="query_flag", default=None)
+  p.add_argument("--limit", dest="limit_flag", default=None, type=int)
+
+  # --- list_folders ---
+  p = sub.add_parser("list_folders", help="List all mailbox folders")
+  p.add_argument("account_pos", nargs="?", default=None)
+  p.add_argument("--account", dest="account_flag", default=None)
+
+  return parser
 
 
 if __name__ == "__main__":
-  if len(sys.argv) < 2:
-    print("Usage: email_ops.py <command> [args]")
-    print("Commands: status, check, read, draft, reply, mark_read, search, list_folders")
-    print("Config: .env.email in same directory (or set EMAIL_ENV_FILE)")
+  parser = build_parser()
+  args = parser.parse_args()
+
+  if not args.command:
+    parser.print_help()
     sys.exit(1)
 
-  cmd = sys.argv[1]
+  cmd = args.command
 
   if cmd == "status":
-    accounts = sys.argv[2:] if len(sys.argv) > 2 else None
-    cmd_status(accounts)
+    accts = args.accounts if args.accounts else None
+    cmd_status(accts)
 
   elif cmd == "check":
-    account = sys.argv[2] if len(sys.argv) > 2 else "default"
-    limit = safe_int(sys.argv[3] if len(sys.argv) > 3 else None, 10)
-    cmd_check(account, limit)
+    account = resolve(args.account_flag, args.account_pos) or "default"
+    limit = resolve(args.limit_flag, args.limit_pos) or 10
+    cmd_check(account, int(limit))
+
+  elif cmd == "recent":
+    account = resolve(args.account_flag, args.account_pos) or "default"
+    limit = resolve(args.limit_flag, args.limit_pos) or 3
+    cmd_recent(account, int(limit))
 
   elif cmd == "read":
-    if len(sys.argv) < 4:
-      cli_error("Usage: read <account> <msg_id>")
-    account = sys.argv[2]
-    msg_id = sys.argv[3]
+    account = resolve(args.account_flag, args.account_pos)
+    msg_id = resolve(args.id_flag, args.msg_id_pos)
+    if not account or not msg_id:
+      print(json.dumps({"error": "Usage: read <account> <msg_id>  or  read --account <name> --id <id>"}))
+      sys.exit(1)
     cmd_read(account, msg_id)
 
   elif cmd == "draft":
-    is_html = "--html" in sys.argv
-    is_theme = "--theme" in sys.argv
-    raw_args = [a for a in sys.argv[2:] if a not in ("--html", "--theme")]
-    clean_args, attach_list = parse_attach_args(raw_args)
-    if len(clean_args) < 4:
-      cli_error("Usage: draft <account> <to> <subject> <body> [cc] [--html] [--theme] [--attach file]")
-    account = clean_args[0]
-    to_addr = clean_args[1]
-    subject = clean_args[2]
-    body = clean_args[3]
-    cc = clean_args[4] if len(clean_args) > 4 else None
-    cmd_draft(account, to_addr, subject, body, cc, html=is_html, theme=is_theme,
-              attachments=attach_list if attach_list else None)
+    account = resolve(args.account_flag, args.account_pos)
+    to_addr = resolve(args.to_flag, args.to_pos)
+    subject = resolve(args.subject_flag, args.subject_pos)
+    body = resolve(args.body_flag, args.body_pos)
+    cc = resolve(args.cc_flag, args.cc_pos)
+    if not all([account, to_addr, subject, body]):
+      missing = [n for n, v in [("account", account), ("to", to_addr), ("subject", subject), ("body", body)] if not v]
+      print(json.dumps({"error": f"Missing required arguments: {', '.join(missing)}",
+                         "usage": "draft <account> <to> <subject> <body> [cc] [--html] [--theme] [--attach file]"}))
+      sys.exit(1)
+    cmd_draft(account, to_addr, subject, body, cc,
+              html=args.html, theme=args.theme,
+              attachments=args.attach)
 
   elif cmd == "reply":
-    is_all = "--all" in sys.argv
-    is_html = "--html" in sys.argv
-    is_theme = "--theme" in sys.argv
-    raw_args = [a for a in sys.argv[2:] if a not in ("--all", "--html", "--theme")]
-    clean_args, attach_list = parse_attach_args(raw_args)
-    if len(clean_args) < 3:
-      cli_error("Usage: reply <account> <msg_id> <body> [--all] [--html] [--theme] [--attach file]")
-    account = clean_args[0]
-    msg_id = clean_args[1]
-    body = clean_args[2]
-    cmd_reply(account, msg_id, body, reply_all=is_all, html=is_html, theme=is_theme,
-              attachments=attach_list if attach_list else None)
+    account = resolve(args.account_flag, args.account_pos)
+    msg_id = resolve(args.id_flag, args.msg_id_pos)
+    body = resolve(args.body_flag, args.body_pos)
+    if not all([account, msg_id, body]):
+      missing = [n for n, v in [("account", account), ("id", msg_id), ("body", body)] if not v]
+      print(json.dumps({"error": f"Missing required arguments: {', '.join(missing)}",
+                         "usage": "reply <account> <msg_id> <body> [--all] [--html] [--theme] [--attach file]"}))
+      sys.exit(1)
+    cmd_reply(account, msg_id, body,
+              reply_all=args.reply_all, html=args.html, theme=args.theme,
+              attachments=args.attach)
 
   elif cmd == "mark_read":
-    if len(sys.argv) < 4:
-      cli_error("Usage: mark_read <account> <msg_id> [msg_id...]")
-    account = sys.argv[2]
-    msg_ids = sys.argv[3:]
+    account = resolve(args.account_flag, args.account_pos)
+    msg_ids = args.msg_ids if args.msg_ids else []
+    if not account or not msg_ids:
+      print(json.dumps({"error": "Usage: mark_read <account> <msg_id> [msg_id ...]"}))
+      sys.exit(1)
     cmd_mark_read(account, msg_ids)
 
   elif cmd == "search":
-    account = sys.argv[2] if len(sys.argv) > 2 else "default"
-    query = sys.argv[3] if len(sys.argv) > 3 else ""
-    limit = safe_int(sys.argv[4] if len(sys.argv) > 4 else None, 10)
-    cmd_search(account, query, limit)
+    account = resolve(args.account_flag, args.account_pos) or "default"
+    query = resolve(args.query_flag, args.query_pos) or ""
+    limit = resolve(args.limit_flag, args.limit_pos) or 10
+    cmd_search(account, query, int(limit))
 
   elif cmd == "list_folders":
-    account = sys.argv[2] if len(sys.argv) > 2 else "default"
+    account = resolve(args.account_flag, args.account_pos) or "default"
     cmd_list_folders(account)
-
-  else:
-    cli_error(f"Unknown command: {cmd}")

@@ -1,4 +1,4 @@
-# BP1 Email Skill — 安裝指南
+# Email Skill — 安裝指南
 
 這個 repo 是 email skill 的安裝源。
 

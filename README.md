@@ -1,17 +1,15 @@
-# BP1: Email Workflow Automation
-
-> Part of the [Enterprise AI Breakpoint Framework](https://github.com/YuWenHao1212?tab=repositories&q=bp&type=&language=&sort=) — 9 universal patterns for AI-powered enterprise workflows.
+# Claude Email Skill
 
 Let Claude read your emails, discuss replies with you, draft responses, and save them to your Drafts folder. You review and hit send.
 
-**Gmail + Outlook supported. Mac + Windows supported.**
+**Gmail + Outlook + Self-hosted IMAP supported. Mac + Windows supported.**
 
 ## Install
 
 Run this in Claude Code (or any terminal):
 
 ```bash
-git clone https://github.com/YuWenHao1212/bp1-email.git /tmp/bp1-email && cp -r /tmp/bp1-email/email ~/.claude/skills/email
+git clone https://github.com/YuWenHao1212/claude-email-skill.git /tmp/claude-email-skill && cp -r /tmp/claude-email-skill/email ~/.claude/skills/email
 ```
 
 This installs the email skill globally (`~/.claude/skills/email/`) — works in any directory.
@@ -45,6 +43,7 @@ Just talk to Claude:
 | Feature | Description |
 |---------|-------------|
 | Read & summarize | Extract key points from emails |
+| List recent | Show latest N emails (read + unread) |
 | Discuss & draft | Talk through your reply, Claude writes it |
 | Refine | Adjust tone, add details, iterate |
 | Reply with threading | Keeps the conversation thread intact |
@@ -67,24 +66,12 @@ Just talk to Claude:
 
 - Python 3.8+
 - Claude Pro (Claude Code or Cowork)
-- Gmail / Google Workspace / Outlook / Microsoft 365
+- Gmail / Google Workspace / Outlook / Microsoft 365 / Self-hosted IMAP (STARTTLS)
 - App Password ([Gmail](https://myaccount.google.com/apppasswords) · [Outlook](https://account.live.com/proofs/AppPassword))
 
-## Enterprise AI Breakpoint Framework
+## Related
 
-This is **BP1 (Email)** — one of 9 universal patterns:
-
-| BP | Pattern | Repo |
-|----|---------|------|
-| **1** | **Email Workflow** | **this repo** |
-| 2 | Calendar & Meeting Setup | coming soon |
-| 3 | Cross-source Data Consolidation | coming soon |
-| 4 | Research → Copy → Visual | coming soon |
-| 5 | Meeting Lifecycle | coming soon |
-| 6 | Approval Tracking | coming soon |
-| 7 | Document Comparison | coming soon |
-| 8 | Recurring Reports | coming soon |
-| 9 | Knowledge Base | coming soon |
+Part of the [Enterprise AI Breakpoint Framework](https://github.com/YuWenHao1212?tab=repositories&q=bp&type=&language=&sort=) — 9 universal patterns for AI-powered enterprise workflows.
 
 ## License
 

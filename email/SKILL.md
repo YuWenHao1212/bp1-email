@@ -98,12 +98,20 @@ account: {帳號名稱}
 |------|------|
 | `status` | 查看各帳號未讀數 |
 | `check {account} [limit]` | 列出未讀信件 |
+| `recent {account} [limit]` | 列出最近 N 封信（已讀＋未讀，預設 3） |
 | `read {account} <id>` | 讀一封信的完整內容 |
 | `search {account} <query> [limit]` | 搜尋信件（支援中文） |
 | `draft {account} <to> <subject> <body> [cc] [--html] [--theme] [--attach file]` | 產草稿 |
 | `reply {account} <id> <body> [--all] [--html] [--theme] [--attach file]` | 回覆 |
 | `mark_read {account} <id> [id...]` | 標記已讀 |
 | `list_folders {account}` | 列出所有信箱資料夾 |
+
+> **兩種寫法都接受**：positional 或 `--flag` 皆可，也可混用。
+> - Positional：`email_ops.py draft work "user@email.com" "主旨" "內文"`
+> - Flag：`email_ops.py draft --account work --to "user@email.com" --subject "主旨" --body "內文"`
+> - 混合：`email_ops.py draft work --to "user@email.com" --subject "主旨" --body "內文"`
+>
+> 查看完整說明：`email_ops.py --help` 或 `email_ops.py draft --help`
 
 ## HTML 信件規則
 
@@ -164,6 +172,14 @@ work_PASSWORD=密碼
 3. 產第一封：先做一封讓使用者確認
 4. 批次產出：確認後逐封存草稿匣
 5. 回報：產了幾封、收件人各是誰
+
+### 看最近的信
+
+使用者說「最近的信」「最近幾封信」「幫我看信」（未指定未讀）時：
+
+1. 用 `recent` 列出最近信件（預設 3 封）
+2. 簡要告訴使用者有哪些信
+3. 使用者選一封 → 用 `read` 讀取
 
 ### 查信
 
